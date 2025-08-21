@@ -13,12 +13,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.modelcontextprotocol.spec.McpError;
-import io.modelcontextprotocol.spec.McpSchema;
-import io.modelcontextprotocol.spec.McpServerTransport;
-import io.modelcontextprotocol.spec.McpServerTransportProvider;
-import io.modelcontextprotocol.spec.ProtocolVersions;
-import io.modelcontextprotocol.spec.McpServerSession;
+import io.modelcontextprotocol.spec.*;
 import io.modelcontextprotocol.util.Assert;
 import io.modelcontextprotocol.util.KeepAliveScheduler;
 
@@ -100,6 +95,8 @@ public class WebMvcSseServerTransportProvider implements McpServerTransportProvi
 	private final RouterFunction<ServerResponse> routerFunction;
 
 	private McpServerSession.Factory sessionFactory;
+
+	private final McpServerAuthenticator authenticator;
 
 	/**
 	 * Map of active client sessions, keyed by session ID.
@@ -185,6 +182,29 @@ public class WebMvcSseServerTransportProvider implements McpServerTransportProvi
 	@Deprecated
 	public WebMvcSseServerTransportProvider(ObjectMapper objectMapper, String baseUrl, String messageEndpoint,
 			String sseEndpoint, Duration keepAliveInterval) {
+		this(objectMapper, baseUrl, messageEndpoint, sseEndpoint, keepAliveInterval,
+				new DefaultMcpServerAuthenticator());
+	}
+
+	/**
+	 * Constructs a new WebMvcSseServerTransportProvider instance.
+	 * @param objectMapper The ObjectMapper to use for JSON serialization/deserialization
+	 * of messages.
+	 * @param baseUrl The base URL for the message endpoint, used to construct the full
+	 * endpoint URL for clients.
+	 * @param messageEndpoint The endpoint URI where clients should send their JSON-RPC
+	 * messages via HTTP POST. This endpoint will be communicated to clients through the
+	 * SSE connection's initial endpoint event.
+	 * @param sseEndpoint The endpoint URI where clients establish their SSE connections.
+	 * * @param keepAliveInterval The interval for sending keep-alive messages to * @param
+	 * authenticator The authenticator to use for validating client tokens.
+	 * @throws IllegalArgumentException if any parameter is null
+	 * @deprecated Use the builder {@link #builder()} instead for better configuration
+	 * options.
+	 */
+	@Deprecated
+	public WebMvcSseServerTransportProvider(ObjectMapper objectMapper, String baseUrl, String messageEndpoint,
+			String sseEndpoint, Duration keepAliveInterval, McpServerAuthenticator authenticator) {
 		Assert.notNull(objectMapper, "ObjectMapper must not be null");
 		Assert.notNull(baseUrl, "Message base URL must not be null");
 		Assert.notNull(messageEndpoint, "Message endpoint must not be null");
@@ -194,6 +214,7 @@ public class WebMvcSseServerTransportProvider implements McpServerTransportProvi
 		this.baseUrl = baseUrl;
 		this.messageEndpoint = messageEndpoint;
 		this.sseEndpoint = sseEndpoint;
+		this.authenticator = authenticator;
 		this.routerFunction = RouterFunctions.route()
 			.GET(this.sseEndpoint, this::handleSseConnection)
 			.POST(this.messageEndpoint, this::handleMessage)
@@ -302,6 +323,19 @@ public class WebMvcSseServerTransportProvider implements McpServerTransportProvi
 			return ServerResponse.status(HttpStatus.SERVICE_UNAVAILABLE).body("Server is shutting down");
 		}
 
+		List<String> authTokens = request.headers().asHttpHeaders().get(HttpHeaders.AUTHORIZATION);
+		if (!(this.authenticator instanceof DefaultMcpServerAuthenticator)) {
+			if (authTokens == null || authTokens.isEmpty()) {
+				return ServerResponse.status(HttpStatus.UNAUTHORIZED)
+					.body("Missing " + HttpHeaders.AUTHORIZATION + " header");
+			}
+
+			if (!this.authenticator.authenticate(authTokens.get(0))) {
+				return ServerResponse.status(HttpStatus.FORBIDDEN)
+					.body("Invalid " + HttpHeaders.AUTHORIZATION + " header");
+			}
+		}
+
 		String sessionId = UUID.randomUUID().toString();
 		logger.debug("Creating new SSE connection for session: {}", sessionId);
 
@@ -318,7 +352,8 @@ public class WebMvcSseServerTransportProvider implements McpServerTransportProvi
 				});
 
 				WebMvcMcpSessionTransport sessionTransport = new WebMvcMcpSessionTransport(sessionId, sseBuilder);
-				McpServerSession session = sessionFactory.create(sessionTransport);
+				McpServerSession session = sessionFactory.create(sessionTransport, sessionId,
+						authTokens == null ? "" : authTokens.get(0), authenticator);
 				this.sessions.put(sessionId, session);
 
 				try {
@@ -583,11 +618,22 @@ public class WebMvcSseServerTransportProvider implements McpServerTransportProvi
 		 * @throws IllegalStateException if objectMapper or messageEndpoint is not set
 		 */
 		public WebMvcSseServerTransportProvider build() {
+			return this.build(new DefaultMcpServerAuthenticator());
+		}
+
+		/**
+		 * Builds a new instance of WebMvcSseServerTransportProvider with the configured
+		 * settings.
+		 * @param authenticator The McpServerAuthenticator to use for authentication
+		 * @return A new WebMvcSseServerTransportProvider instance
+		 * @throws IllegalStateException if objectMapper or messageEndpoint is not set
+		 */
+		public WebMvcSseServerTransportProvider build(McpServerAuthenticator authenticator) {
 			if (messageEndpoint == null) {
 				throw new IllegalStateException("MessageEndpoint must be set");
 			}
 			return new WebMvcSseServerTransportProvider(objectMapper, baseUrl, messageEndpoint, sseEndpoint,
-					keepAliveInterval);
+					keepAliveInterval, authenticator);
 		}
 
 	}

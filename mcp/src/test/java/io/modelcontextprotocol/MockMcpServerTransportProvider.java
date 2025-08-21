@@ -4,6 +4,7 @@
 
 package io.modelcontextprotocol;
 
+import io.modelcontextprotocol.spec.DefaultMcpServerAuthenticator;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpServerSession;
 import io.modelcontextprotocol.spec.McpServerSession.Factory;
@@ -30,7 +31,7 @@ public class MockMcpServerTransportProvider implements McpServerTransportProvide
 	@Override
 	public void setSessionFactory(Factory sessionFactory) {
 
-		session = sessionFactory.create(transport);
+		session = sessionFactory.create(transport, "mock", "", new DefaultMcpServerAuthenticator());
 	}
 
 	@Override

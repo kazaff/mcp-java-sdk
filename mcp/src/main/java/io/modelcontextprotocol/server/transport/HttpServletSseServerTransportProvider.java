@@ -16,12 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.modelcontextprotocol.spec.McpError;
-import io.modelcontextprotocol.spec.McpSchema;
-import io.modelcontextprotocol.spec.McpServerSession;
-import io.modelcontextprotocol.spec.McpServerTransport;
-import io.modelcontextprotocol.spec.McpServerTransportProvider;
-import io.modelcontextprotocol.spec.ProtocolVersions;
+import io.modelcontextprotocol.spec.*;
 import io.modelcontextprotocol.util.Assert;
 import io.modelcontextprotocol.util.KeepAliveScheduler;
 import jakarta.servlet.AsyncContext;
@@ -272,7 +267,8 @@ public class HttpServletSseServerTransportProvider extends HttpServlet implement
 				writer);
 
 		// Create a new session using the session factory
-		McpServerSession session = sessionFactory.create(sessionTransport);
+		McpServerSession session = sessionFactory.create(sessionTransport, sessionId, "",
+				new DefaultMcpServerAuthenticator());
 		this.sessions.put(sessionId, session);
 
 		// Send initial endpoint event

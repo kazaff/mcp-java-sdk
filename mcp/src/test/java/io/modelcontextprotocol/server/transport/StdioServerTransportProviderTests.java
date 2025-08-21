@@ -28,6 +28,7 @@ import reactor.test.StepVerifier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -71,7 +72,8 @@ class StdioServerTransportProviderTests {
 		sessionFactory = mock(McpServerSession.Factory.class);
 
 		// Configure mock behavior
-		when(sessionFactory.create(any(McpServerTransport.class))).thenReturn(mockSession);
+		when(sessionFactory.create(any(McpServerTransport.class), anyString(), anyString(), any()))
+			.thenReturn(mockSession);
 		when(mockSession.closeGracefully()).thenReturn(Mono.empty());
 		when(mockSession.sendNotification(any(), any())).thenReturn(Mono.empty());
 
@@ -110,7 +112,7 @@ class StdioServerTransportProviderTests {
 		AtomicReference<McpSchema.JSONRPCMessage> capturedMessage = new AtomicReference<>();
 		CountDownLatch messageLatch = new CountDownLatch(1);
 
-		McpServerSession.Factory realSessionFactory = transport -> {
+		McpServerSession.Factory realSessionFactory = (transport, sessionId, token, authenticator) -> {
 			McpServerSession session = mock(McpServerSession.class);
 			when(session.handle(any())).thenAnswer(invocation -> {
 				capturedMessage.set(invocation.getArgument(0));

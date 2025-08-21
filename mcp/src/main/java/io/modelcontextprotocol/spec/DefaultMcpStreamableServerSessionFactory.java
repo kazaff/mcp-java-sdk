@@ -45,10 +45,11 @@ public class DefaultMcpStreamableServerSessionFactory implements McpStreamableSe
 
 	@Override
 	public McpStreamableServerSession.McpStreamableServerSessionInit startSession(
-			McpSchema.InitializeRequest initializeRequest) {
+			McpSchema.InitializeRequest initializeRequest, String token, McpServerAuthenticator authenticator) {
 		return new McpStreamableServerSession.McpStreamableServerSessionInit(
 				new McpStreamableServerSession(UUID.randomUUID().toString(), initializeRequest.capabilities(),
-						initializeRequest.clientInfo(), requestTimeout, requestHandlers, notificationHandlers),
+						initializeRequest.clientInfo(), requestTimeout, requestHandlers, notificationHandlers, token,
+						authenticator),
 				this.initRequestHandler.handle(initializeRequest));
 	}
 

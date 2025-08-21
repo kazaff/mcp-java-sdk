@@ -26,4 +26,6 @@ public interface HttpHeaders {
 	 */
 	String PROTOCOL_VERSION = "MCP-Protocol-Version";
 
+	String AUTHORIZATION = "Authorization";
+
 }

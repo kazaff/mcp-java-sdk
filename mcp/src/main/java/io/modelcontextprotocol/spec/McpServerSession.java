@@ -65,6 +65,10 @@ public class McpServerSession implements McpLoggableSession {
 
 	private volatile McpSchema.LoggingLevel minLoggingLevel = McpSchema.LoggingLevel.INFO;
 
+	private final String token;
+
+	private final McpServerAuthenticator authenticator;
+
 	/**
 	 * Creates a new server session with the given parameters and the transport to use.
 	 * @param id session id
@@ -77,13 +81,17 @@ public class McpServerSession implements McpLoggableSession {
 	 */
 	public McpServerSession(String id, Duration requestTimeout, McpServerTransport transport,
 			McpInitRequestHandler initHandler, Map<String, McpRequestHandler<?>> requestHandlers,
-			Map<String, McpNotificationHandler> notificationHandlers) {
+			Map<String, McpNotificationHandler> notificationHandlers, String token,
+			McpServerAuthenticator authenticator) {
 		this.id = id;
 		this.requestTimeout = requestTimeout;
 		this.transport = transport;
 		this.initRequestHandler = initHandler;
 		this.requestHandlers = requestHandlers;
 		this.notificationHandlers = notificationHandlers;
+
+		this.token = token;
+		this.authenticator = authenticator;
 	}
 
 	/**
@@ -99,19 +107,22 @@ public class McpServerSession implements McpLoggableSession {
 	 * @param requestHandlers map of request handlers to use
 	 * @param notificationHandlers map of notification handlers to use
 	 * @deprecated Use
-	 * {@link #McpServerSession(String, Duration, McpServerTransport, McpInitRequestHandler, Map, Map)}
+	 * {@link #McpServerSession(String, Duration, McpServerTransport, McpInitRequestHandler, Map, Map, String, McpServerAuthenticator)}
 	 */
 	@Deprecated
 	public McpServerSession(String id, Duration requestTimeout, McpServerTransport transport,
 			McpInitRequestHandler initHandler, InitNotificationHandler initNotificationHandler,
-			Map<String, McpRequestHandler<?>> requestHandlers,
-			Map<String, McpNotificationHandler> notificationHandlers) {
+			Map<String, McpRequestHandler<?>> requestHandlers, Map<String, McpNotificationHandler> notificationHandlers,
+			String token, McpServerAuthenticator authenticator) {
 		this.id = id;
 		this.requestTimeout = requestTimeout;
 		this.transport = transport;
 		this.initRequestHandler = initHandler;
 		this.requestHandlers = requestHandlers;
 		this.notificationHandlers = notificationHandlers;
+
+		this.token = token;
+		this.authenticator = authenticator;
 	}
 
 	/**
@@ -120,6 +131,10 @@ public class McpServerSession implements McpLoggableSession {
 	 */
 	public String getId() {
 		return this.id;
+	}
+
+	public String getToken() {
+		return this.token;
 	}
 
 	/**
@@ -266,7 +281,8 @@ public class McpServerSession implements McpLoggableSession {
 									error.message(), error.data())));
 				}
 
-				resultMono = this.exchangeSink.asMono().flatMap(exchange -> handler.handle(exchange, request.params()));
+				resultMono = this.exchangeSink.asMono()
+					.flatMap(exchange -> handler.handle(exchange, request.params(), this.token, this.authenticator));
 			}
 			return resultMono
 				.map(result -> new McpSchema.JSONRPCResponse(McpSchema.JSONRPC_VERSION, request.id(), result, null))
@@ -386,7 +402,8 @@ public class McpServerSession implements McpLoggableSession {
 		 * @param params the parameters of the request.
 		 * @return a Mono that will emit the response to the request.
 		 */
-		Mono<T> handle(McpAsyncServerExchange exchange, Object params);
+		Mono<T> handle(McpAsyncServerExchange exchange, Object params, String token,
+				McpServerAuthenticator authenticator);
 
 	}
 
@@ -402,7 +419,8 @@ public class McpServerSession implements McpLoggableSession {
 		 * @param sessionTransport the transport to use for communication with the client.
 		 * @return a new server session.
 		 */
-		McpServerSession create(McpServerTransport sessionTransport);
+		McpServerSession create(McpServerTransport sessionTransport, String sessionId, String token,
+				McpServerAuthenticator authenticator);
 
 	}
 

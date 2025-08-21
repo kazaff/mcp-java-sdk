@@ -1,5 +1,6 @@
 package io.modelcontextprotocol.server;
 
+import io.modelcontextprotocol.spec.McpServerAuthenticator;
 import reactor.core.publisher.Mono;
 
 /**
@@ -17,6 +18,6 @@ public interface McpRequestHandler<T> {
 	 * @param params the parameters of the request.
 	 * @return a Mono that will emit the response to the request.
 	 */
-	Mono<T> handle(McpAsyncServerExchange exchange, Object params);
+	Mono<T> handle(McpAsyncServerExchange exchange, Object params, String token, McpServerAuthenticator authenticator);
 
 }

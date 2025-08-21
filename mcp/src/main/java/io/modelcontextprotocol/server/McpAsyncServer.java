@@ -15,27 +15,19 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiFunction;
 
-import io.modelcontextprotocol.spec.DefaultMcpStreamableServerSessionFactory;
-import io.modelcontextprotocol.spec.McpServerTransportProviderBase;
-import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
+import io.modelcontextprotocol.spec.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import io.modelcontextprotocol.spec.JsonSchemaValidator;
-import io.modelcontextprotocol.spec.McpClientSession;
-import io.modelcontextprotocol.spec.McpError;
-import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.LoggingLevel;
 import io.modelcontextprotocol.spec.McpSchema.LoggingMessageNotification;
 import io.modelcontextprotocol.spec.McpSchema.ResourceTemplate;
 import io.modelcontextprotocol.spec.McpSchema.SetLevelRequest;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
-import io.modelcontextprotocol.spec.McpServerSession;
-import io.modelcontextprotocol.spec.McpServerTransportProvider;
 import io.modelcontextprotocol.util.Assert;
 import io.modelcontextprotocol.util.DeafaultMcpUriTemplateManagerFactory;
 import io.modelcontextprotocol.util.McpUriTemplateManagerFactory;
@@ -119,6 +111,8 @@ public class McpAsyncServer {
 
 	private McpUriTemplateManagerFactory uriTemplateManagerFactory = new DeafaultMcpUriTemplateManagerFactory();
 
+	private final ToolFilter toolFilter;
+
 	/**
 	 * Create a new McpAsyncServer with the given transport provider and capabilities.
 	 * @param mcpTransportProvider The transport layer implementation for MCP
@@ -128,7 +122,8 @@ public class McpAsyncServer {
 	 */
 	McpAsyncServer(McpServerTransportProvider mcpTransportProvider, ObjectMapper objectMapper,
 			McpServerFeatures.Async features, Duration requestTimeout,
-			McpUriTemplateManagerFactory uriTemplateManagerFactory, JsonSchemaValidator jsonSchemaValidator) {
+			McpUriTemplateManagerFactory uriTemplateManagerFactory, JsonSchemaValidator jsonSchemaValidator,
+			ToolFilter toolFilter) {
 		this.mcpTransportProvider = mcpTransportProvider;
 		this.objectMapper = objectMapper;
 		this.serverInfo = features.serverInfo();
@@ -147,13 +142,18 @@ public class McpAsyncServer {
 
 		this.protocolVersions = mcpTransportProvider.protocolVersions();
 
-		mcpTransportProvider.setSessionFactory(transport -> new McpServerSession(UUID.randomUUID().toString(),
-				requestTimeout, transport, this::asyncInitializeRequestHandler, requestHandlers, notificationHandlers));
+		this.toolFilter = toolFilter;
+
+		mcpTransportProvider
+			.setSessionFactory((transport, sessionId, token, authenticator) -> new McpServerSession(sessionId,
+					requestTimeout, transport, this::asyncInitializeRequestHandler, requestHandlers,
+					notificationHandlers, token, authenticator));
 	}
 
 	McpAsyncServer(McpStreamableServerTransportProvider mcpTransportProvider, ObjectMapper objectMapper,
 			McpServerFeatures.Async features, Duration requestTimeout,
-			McpUriTemplateManagerFactory uriTemplateManagerFactory, JsonSchemaValidator jsonSchemaValidator) {
+			McpUriTemplateManagerFactory uriTemplateManagerFactory, JsonSchemaValidator jsonSchemaValidator,
+			ToolFilter toolFilter) {
 		this.mcpTransportProvider = mcpTransportProvider;
 		this.objectMapper = objectMapper;
 		this.serverInfo = features.serverInfo();
@@ -174,6 +174,8 @@ public class McpAsyncServer {
 
 		mcpTransportProvider.setSessionFactory(new DefaultMcpStreamableServerSessionFactory(requestTimeout,
 				this::asyncInitializeRequestHandler, requestHandlers, notificationHandlers));
+
+		this.toolFilter = toolFilter;
 	}
 
 	private Map<String, McpNotificationHandler> prepareNotificationHandlers(McpServerFeatures.Async features) {
@@ -200,7 +202,7 @@ public class McpAsyncServer {
 		// Initialize request handlers for standard MCP methods
 
 		// Ping MUST respond with an empty data, but not NULL response.
-		requestHandlers.put(McpSchema.METHOD_PING, (exchange, params) -> Mono.just(Map.of()));
+		requestHandlers.put(McpSchema.METHOD_PING, (exchange, params, token, authenticator) -> Mono.just(Map.of()));
 
 		// Add tools API handlers if the tool capability is enabled
 		if (this.serverCapabilities.tools() != null) {
@@ -489,15 +491,18 @@ public class McpAsyncServer {
 	}
 
 	private McpRequestHandler<McpSchema.ListToolsResult> toolsListRequestHandler() {
-		return (exchange, params) -> {
-			List<Tool> tools = this.tools.stream().map(McpServerFeatures.AsyncToolSpecification::tool).toList();
+		return (exchange, params, token, authenticator) -> {
+			List<Tool> tools = this.tools.stream()
+				.map(McpServerFeatures.AsyncToolSpecification::tool)
+				.filter(tool -> this.toolFilter.accept(tool.name(), token, authenticator))
+				.toList();
 
 			return Mono.just(new McpSchema.ListToolsResult(tools, null));
 		};
 	}
 
 	private McpRequestHandler<CallToolResult> toolsCallRequestHandler() {
-		return (exchange, params) -> {
+		return (exchange, params, token, authenticator) -> {
 			McpSchema.CallToolRequest callToolRequest = objectMapper.convertValue(params,
 					new TypeReference<McpSchema.CallToolRequest>() {
 					});
@@ -508,6 +513,10 @@ public class McpAsyncServer {
 
 			if (toolSpecification.isEmpty()) {
 				return Mono.error(new McpError("Tool not found: " + callToolRequest.name()));
+			}
+
+			if (!this.toolFilter.accept(callToolRequest.name(), token, authenticator)) {
+				return Mono.error(new McpError("Access denied to tool: " + callToolRequest.name()));
 			}
 
 			return toolSpecification.map(tool -> Mono.defer(() -> tool.callHandler().apply(exchange, callToolRequest)))
@@ -590,7 +599,7 @@ public class McpAsyncServer {
 	}
 
 	private McpRequestHandler<McpSchema.ListResourcesResult> resourcesListRequestHandler() {
-		return (exchange, params) -> {
+		return (exchange, params, token, authenticator) -> {
 			var resourceList = this.resources.values()
 				.stream()
 				.map(McpServerFeatures.AsyncResourceSpecification::resource)
@@ -600,7 +609,7 @@ public class McpAsyncServer {
 	}
 
 	private McpRequestHandler<McpSchema.ListResourceTemplatesResult> resourceTemplateListRequestHandler() {
-		return (exchange, params) -> Mono
+		return (exchange, params, token, authenticator) -> Mono
 			.just(new McpSchema.ListResourceTemplatesResult(this.getResourceTemplates(), null));
 
 	}
@@ -624,7 +633,7 @@ public class McpAsyncServer {
 	}
 
 	private McpRequestHandler<McpSchema.ReadResourceResult> resourcesReadRequestHandler() {
-		return (exchange, params) -> {
+		return (exchange, params, token, authenticator) -> {
 			McpSchema.ReadResourceRequest resourceRequest = objectMapper.convertValue(params,
 					new TypeReference<McpSchema.ReadResourceRequest>() {
 					});
@@ -717,7 +726,7 @@ public class McpAsyncServer {
 	}
 
 	private McpRequestHandler<McpSchema.ListPromptsResult> promptsListRequestHandler() {
-		return (exchange, params) -> {
+		return (exchange, params, token, authenticator) -> {
 			// TODO: Implement pagination
 			// McpSchema.PaginatedRequest request = objectMapper.convertValue(params,
 			// new TypeReference<McpSchema.PaginatedRequest>() {
@@ -733,7 +742,7 @@ public class McpAsyncServer {
 	}
 
 	private McpRequestHandler<McpSchema.GetPromptResult> promptsGetRequestHandler() {
-		return (exchange, params) -> {
+		return (exchange, params, token, authenticator) -> {
 			McpSchema.GetPromptRequest promptRequest = objectMapper.convertValue(params,
 					new TypeReference<McpSchema.GetPromptRequest>() {
 					});
@@ -779,7 +788,7 @@ public class McpAsyncServer {
 	}
 
 	private McpRequestHandler<Object> setLoggerRequestHandler() {
-		return (exchange, params) -> {
+		return (exchange, params, token, authenticator) -> {
 			return Mono.defer(() -> {
 
 				SetLevelRequest newMinLoggingLevel = objectMapper.convertValue(params,
@@ -798,7 +807,7 @@ public class McpAsyncServer {
 	}
 
 	private McpRequestHandler<McpSchema.CompleteResult> completionCompleteRequestHandler() {
-		return (exchange, params) -> {
+		return (exchange, params, token, authenticator) -> {
 			McpSchema.CompleteRequest request = parseCompletionParams(params);
 
 			if (request.ref() == null) {

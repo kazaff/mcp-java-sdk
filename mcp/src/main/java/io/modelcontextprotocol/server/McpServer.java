@@ -15,14 +15,9 @@ import java.util.function.BiFunction;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import io.modelcontextprotocol.spec.DefaultJsonSchemaValidator;
-import io.modelcontextprotocol.spec.JsonSchemaValidator;
-import io.modelcontextprotocol.spec.McpSchema;
+import io.modelcontextprotocol.spec.*;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.ResourceTemplate;
-import io.modelcontextprotocol.spec.McpServerTransportProvider;
-import io.modelcontextprotocol.spec.McpStatelessServerTransport;
-import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
 import io.modelcontextprotocol.util.Assert;
 import io.modelcontextprotocol.util.DeafaultMcpUriTemplateManagerFactory;
 import io.modelcontextprotocol.util.McpUriTemplateManagerFactory;
@@ -216,13 +211,19 @@ public interface McpServer {
 			this.transportProvider = transportProvider;
 		}
 
+		@Override
+		public McpAsyncServer build() {
+			return this.build(new DefaultToolFilter());
+		}
+
 		/**
 		 * Builds an asynchronous MCP server that provides non-blocking operations.
 		 * @return A new instance of {@link McpAsyncServer} configured with this builder's
 		 * settings.
 		 */
+
 		@Override
-		public McpAsyncServer build() {
+		public McpAsyncServer build(ToolFilter toolFilter) {
 			var features = new McpServerFeatures.Async(this.serverInfo, this.serverCapabilities, this.tools,
 					this.resources, this.resourceTemplates, this.prompts, this.completions, this.rootsChangeHandlers,
 					this.instructions);
@@ -230,7 +231,7 @@ public interface McpServer {
 			var jsonSchemaValidator = this.jsonSchemaValidator != null ? this.jsonSchemaValidator
 					: new DefaultJsonSchemaValidator(mapper);
 			return new McpAsyncServer(this.transportProvider, mapper, features, this.requestTimeout,
-					this.uriTemplateManagerFactory, jsonSchemaValidator);
+					this.uriTemplateManagerFactory, jsonSchemaValidator, toolFilter);
 		}
 
 	}
@@ -243,13 +244,19 @@ public interface McpServer {
 			this.transportProvider = transportProvider;
 		}
 
+		@Override
+		public McpAsyncServer build() {
+			return this.build(new DefaultToolFilter());
+		}
+
 		/**
 		 * Builds an asynchronous MCP server that provides non-blocking operations.
 		 * @return A new instance of {@link McpAsyncServer} configured with this builder's
 		 * settings.
 		 */
+
 		@Override
-		public McpAsyncServer build() {
+		public McpAsyncServer build(ToolFilter toolFilter) {
 			var features = new McpServerFeatures.Async(this.serverInfo, this.serverCapabilities, this.tools,
 					this.resources, this.resourceTemplates, this.prompts, this.completions, this.rootsChangeHandlers,
 					this.instructions);
@@ -257,7 +264,7 @@ public interface McpServer {
 			var jsonSchemaValidator = this.jsonSchemaValidator != null ? this.jsonSchemaValidator
 					: new DefaultJsonSchemaValidator(mapper);
 			return new McpAsyncServer(this.transportProvider, mapper, features, this.requestTimeout,
-					this.uriTemplateManagerFactory, jsonSchemaValidator);
+					this.uriTemplateManagerFactory, jsonSchemaValidator, toolFilter);
 		}
 
 	}
@@ -315,6 +322,8 @@ public interface McpServer {
 		Duration requestTimeout = Duration.ofHours(10); // Default timeout
 
 		public abstract McpAsyncServer build();
+
+		public abstract McpAsyncServer build(ToolFilter toolFilter);
 
 		/**
 		 * Sets the URI template manager factory to use for creating URI templates. This
@@ -800,13 +809,19 @@ public interface McpServer {
 			this.transportProvider = transportProvider;
 		}
 
+		@Override
+		public McpSyncServer build() {
+			return this.build(new DefaultToolFilter());
+		}
+
 		/**
 		 * Builds a synchronous MCP server that provides blocking operations.
 		 * @return A new instance of {@link McpSyncServer} configured with this builder's
 		 * settings.
 		 */
+
 		@Override
-		public McpSyncServer build() {
+		public McpSyncServer build(ToolFilter toolFilter) {
 			McpServerFeatures.Sync syncFeatures = new McpServerFeatures.Sync(this.serverInfo, this.serverCapabilities,
 					this.tools, this.resources, this.resourceTemplates, this.prompts, this.completions,
 					this.rootsChangeHandlers, this.instructions);
@@ -817,7 +832,7 @@ public interface McpServer {
 					: new DefaultJsonSchemaValidator(mapper);
 
 			var asyncServer = new McpAsyncServer(this.transportProvider, mapper, asyncFeatures, this.requestTimeout,
-					this.uriTemplateManagerFactory, jsonSchemaValidator);
+					this.uriTemplateManagerFactory, jsonSchemaValidator, toolFilter);
 
 			return new McpSyncServer(asyncServer, this.immediateExecution);
 		}
@@ -833,13 +848,18 @@ public interface McpServer {
 			this.transportProvider = transportProvider;
 		}
 
+		@Override
+		public McpSyncServer build() {
+			return this.build(new DefaultToolFilter());
+		}
+
 		/**
 		 * Builds a synchronous MCP server that provides blocking operations.
 		 * @return A new instance of {@link McpSyncServer} configured with this builder's
 		 * settings.
 		 */
 		@Override
-		public McpSyncServer build() {
+		public McpSyncServer build(ToolFilter toolFilter) {
 			McpServerFeatures.Sync syncFeatures = new McpServerFeatures.Sync(this.serverInfo, this.serverCapabilities,
 					this.tools, this.resources, this.resourceTemplates, this.prompts, this.completions,
 					this.rootsChangeHandlers, this.instructions);
@@ -850,7 +870,7 @@ public interface McpServer {
 					: new DefaultJsonSchemaValidator(mapper);
 
 			var asyncServer = new McpAsyncServer(this.transportProvider, mapper, asyncFeatures, this.requestTimeout,
-					this.uriTemplateManagerFactory, jsonSchemaValidator);
+					this.uriTemplateManagerFactory, jsonSchemaValidator, toolFilter);
 
 			return new McpSyncServer(asyncServer, this.immediateExecution);
 		}
@@ -912,6 +932,8 @@ public interface McpServer {
 		boolean immediateExecution = false;
 
 		public abstract McpSyncServer build();
+
+		public abstract McpSyncServer build(ToolFilter toolFilter);
 
 		/**
 		 * Sets the URI template manager factory to use for creating URI templates. This

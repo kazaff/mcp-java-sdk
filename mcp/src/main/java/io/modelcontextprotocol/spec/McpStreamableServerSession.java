@@ -60,6 +60,10 @@ public class McpStreamableServerSession implements McpLoggableSession {
 
 	private volatile McpSchema.LoggingLevel minLoggingLevel = McpSchema.LoggingLevel.INFO;
 
+	private final String token;
+
+	private final McpServerAuthenticator authenticator;
+
 	/**
 	 * Create an instance of the streamable session.
 	 * @param id session ID
@@ -72,8 +76,8 @@ public class McpStreamableServerSession implements McpLoggableSession {
 	 */
 	public McpStreamableServerSession(String id, McpSchema.ClientCapabilities clientCapabilities,
 			McpSchema.Implementation clientInfo, Duration requestTimeout,
-			Map<String, McpRequestHandler<?>> requestHandlers,
-			Map<String, McpNotificationHandler> notificationHandlers) {
+			Map<String, McpRequestHandler<?>> requestHandlers, Map<String, McpNotificationHandler> notificationHandlers,
+			String token, McpServerAuthenticator authenticator) {
 		this.id = id;
 		this.missingMcpTransportSession = new MissingMcpTransportSession(id);
 		this.listeningStreamRef = new AtomicReference<>(this.missingMcpTransportSession);
@@ -82,6 +86,9 @@ public class McpStreamableServerSession implements McpLoggableSession {
 		this.requestTimeout = requestTimeout;
 		this.requestHandlers = requestHandlers;
 		this.notificationHandlers = notificationHandlers;
+
+		this.token = token;
+		this.authenticator = authenticator;
 	}
 
 	@Override
@@ -101,6 +108,10 @@ public class McpStreamableServerSession implements McpLoggableSession {
 	 */
 	public String getId() {
 		return this.id;
+	}
+
+	public String getToken() {
+		return this.token;
 	}
 
 	private String generateRequestId() {
@@ -173,7 +184,7 @@ public class McpStreamableServerSession implements McpLoggableSession {
 			}
 			return requestHandler
 				.handle(new McpAsyncServerExchange(this.id, stream, clientCapabilities.get(), clientInfo.get(),
-						transportContext), jsonrpcRequest.params())
+						transportContext), jsonrpcRequest.params(), token, authenticator)
 				.map(result -> new McpSchema.JSONRPCResponse(McpSchema.JSONRPC_VERSION, jsonrpcRequest.id(), result,
 						null))
 				.onErrorResume(e -> {
@@ -281,7 +292,8 @@ public class McpStreamableServerSession implements McpLoggableSession {
 		 * @param initializeRequest the initialization request from the client
 		 * @return a composite allowing the session to start
 		 */
-		McpStreamableServerSessionInit startSession(McpSchema.InitializeRequest initializeRequest);
+		McpStreamableServerSessionInit startSession(McpSchema.InitializeRequest initializeRequest, String token,
+				McpServerAuthenticator authenticator);
 
 	}
 

@@ -8,13 +8,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.server.DefaultMcpTransportContext;
 import io.modelcontextprotocol.server.McpTransportContextExtractor;
-import io.modelcontextprotocol.spec.HttpHeaders;
-import io.modelcontextprotocol.spec.McpError;
-import io.modelcontextprotocol.spec.McpSchema;
-import io.modelcontextprotocol.spec.McpStreamableServerSession;
-import io.modelcontextprotocol.spec.McpStreamableServerTransport;
-import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
-import io.modelcontextprotocol.spec.ProtocolVersions;
+import io.modelcontextprotocol.spec.*;
 import io.modelcontextprotocol.server.McpTransportContext;
 import io.modelcontextprotocol.util.Assert;
 import io.modelcontextprotocol.util.KeepAliveScheduler;
@@ -234,7 +228,7 @@ public class WebFluxStreamableServerTransportProvider implements McpStreamableSe
 							new TypeReference<McpSchema.InitializeRequest>() {
 							});
 					McpStreamableServerSession.McpStreamableServerSessionInit init = this.sessionFactory
-						.startSession(initializeRequest);
+						.startSession(initializeRequest, "", new DefaultMcpServerAuthenticator());
 					sessions.put(init.session().getId(), init.session());
 					return init.initResult().map(initializeResult -> {
 						McpSchema.JSONRPCResponse jsonrpcResponse = new McpSchema.JSONRPCResponse(
